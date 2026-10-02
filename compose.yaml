@@ -34,6 +34,8 @@ services:
     environment:
       DATABASE_URL: postgres://invoiceops:${POSTGRES_APP_PASSWORD:?Run npm run init}@postgres:5432/invoiceops
       API_TOKEN: ${API_TOKEN:?Run npm run init}
+      API_ISSUER_TOKEN: ${API_ISSUER_TOKEN:?Run npm run init}
+      API_COLLECTOR_TOKEN: ${API_COLLECTOR_TOKEN:?Run npm run init}
     depends_on: { postgres: { condition: service_healthy } }
     read_only: true
     tmpfs: ["/tmp:size=16m,mode=1777"]
@@ -61,7 +63,7 @@ services:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
-    networks: [telemetry]
+    networks: [telemetry, monitoring]
     mem_limit: 256m
     cpus: 0.5
     healthcheck:
@@ -84,7 +86,7 @@ services:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
-    networks: [telemetry]
+    networks: [telemetry, monitoring]
     depends_on: { prometheus: { condition: service_healthy } }
     mem_limit: 256m
     cpus: 0.5
@@ -94,9 +96,20 @@ services:
       timeout: 3s
       retries: 20
 networks:
-  application: {}
-  data: { internal: true }
-  telemetry: { internal: true }
+  application:
+    ipam:
+      config: [{ subnet: "${APPLICATION_SUBNET:-10.250.130.0/24}" }]
+  data:
+    internal: true
+    ipam:
+      config: [{ subnet: "${DATA_SUBNET:-10.250.131.0/24}" }]
+  telemetry:
+    internal: true
+    ipam:
+      config: [{ subnet: "${TELEMETRY_SUBNET:-10.250.132.0/24}" }]
+  monitoring:
+    ipam:
+      config: [{ subnet: "${MONITORING_SUBNET:-10.250.133.0/24}" }]
 volumes:
   pgdata: {}
   prometheus-data: {}

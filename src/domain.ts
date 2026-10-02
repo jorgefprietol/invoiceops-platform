@@ -32,6 +32,37 @@ export const invoiceInput = z
 export type InvoiceInput = z.infer<typeof invoiceInput>;
 export type Status = "draft" | "issued" | "paid" | "void";
 export type Command = "issue" | "pay" | "void";
+export type Role = "admin" | "issuer" | "collector";
+
+export function authorize(role: Role, operation: "create" | Command) {
+  if (role === "admin") return;
+  if (role === "issuer" && operation !== "pay") return;
+  if (role === "collector" && operation === "pay") return;
+  throw new DomainError(403, "forbidden");
+}
+
+export const pageQuery = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    cursor: z
+      .string()
+      .min(8)
+      .max(256)
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .optional(),
+  })
+  .strict();
+
+export function decodeCursor(cursor: string) {
+  try {
+    return z
+      .object({ createdAt: z.iso.datetime(), id: z.uuid() })
+      .strict()
+      .parse(JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")));
+  } catch {
+    throw new DomainError(400, "invalid_cursor");
+  }
+}
 export type Invoice = InvoiceInput & {
   id: string;
   status: Status;

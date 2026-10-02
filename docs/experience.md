@@ -10,6 +10,7 @@ Automaticé calidad, integración con base de datos real, aceptación de contene
 
 - Idempotencia transaccional persistente y control de versiones para proteger operaciones concurrentes.
 - Cálculo monetario exacto y ciclo de vida de facturas con auditoría por versión.
+- Separación de permisos de emisión/cobro, paginación estable y exportación de facturas PDF.
 - Imágenes de aplicación sin privilegios y entrega por digest, con SBOM y procedencia firmada.
 - Validación de disponibilidad frente a pérdida de la base de datos, recreación de contenedores y releases fallidos.
 - Documentación de arquitectura, API, operación y flujo de contribución GitFlow.

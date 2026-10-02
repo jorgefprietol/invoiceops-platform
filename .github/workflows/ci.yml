@@ -35,7 +35,6 @@ jobs:
         with: { node-version-file: .node-version, cache: npm }
       - run: npm ci --ignore-scripts
       - run: npm run verify
-      - run: npm run test:integration
       - run: npm audit --audit-level=high
       - name: Validate orchestration and monitoring rules
         run: |

@@ -4,8 +4,10 @@ La evidencia automatizada se genera por ejecución en GitHub Actions. Los artifa
 
 | Área | Verificación reproducible |
 | --- | --- |
-| Dominio | Cálculo monetario, validación de límites y transiciones permitidas/rechazadas |
+| Dominio | Dinero, límites, transiciones, permisos y validación de cursores |
 | PostgreSQL | Ocho reintentos concurrentes, conflicto de payload, nueva instancia API, versiones y atomicidad |
+| Roles y documentos | Operaciones permitidas/rechazadas, auditoría por función, PDF autenticado y cien líneas paginadas |
+| Paginación | Recorrido sin duplicados con inserción entre páginas; cursores inválidos rechazados |
 | Docker | Smoke contra las imágenes construidas, pérdida de DB, recovery y estado tras recreación |
 | Observabilidad | Prometheus scrape, reglas validadas con promtool y dashboard provisionado |
 | Kubernetes | Dos réplicas, rolling restart, conservación de factura, imagen rechazada y rollback |

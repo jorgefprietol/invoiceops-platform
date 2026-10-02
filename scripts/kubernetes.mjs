@@ -68,6 +68,8 @@ for (const [name, data] of Object.entries({
   "invoiceops-api-secrets": {
     DATABASE_URL: `postgres://invoiceops:${values.POSTGRES_APP_PASSWORD}@postgres:5432/invoiceops`,
     API_TOKEN: values.API_TOKEN,
+    API_ISSUER_TOKEN: values.API_ISSUER_TOKEN,
+    API_COLLECTOR_TOKEN: values.API_COLLECTOR_TOKEN,
   },
 }))
   k(

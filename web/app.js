@@ -1,6 +1,10 @@
 let token = "";
 let items = [];
 let pendingCreate = null;
+let role = "collector";
+let nextCursor = null;
+let pageIndex = 0;
+const cursors = [null];
 const byId = (id) => document.getElementById(id);
 const money = (cents) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
@@ -48,6 +52,7 @@ async function api(path, body, key = crypto.randomUUID()) {
   if (!response.ok) {
     const messages = {
       unauthorized: "La clave de acceso no es válida.",
+      forbidden: "Tu rol no permite esta operación.",
       version_conflict: "La factura cambió. Actualiza y revisa su estado.",
       invalid_transition: "El estado actual no permite esta operación.",
       invalid_request: "Revisa los campos de la solicitud.",
@@ -61,7 +66,14 @@ async function api(path, body, key = crypto.randomUUID()) {
   return result;
 }
 async function refresh() {
-  const result = await api("/api/v1/invoices");
+  const query = new URLSearchParams({ limit: "20" });
+  if (cursors[pageIndex]) query.set("cursor", cursors[pageIndex]);
+  const result = await api(`/api/v1/invoices?${query}`);
+  nextCursor = result.nextCursor;
+  byId("page-number").textContent =
+    `Página ${pageIndex + 1} · Resumen de esta página`;
+  byId("previous-page").disabled = pageIndex === 0;
+  byId("next-page").disabled = !nextCursor;
   items = result.items;
   byId("count").textContent = items.length;
   byId("drafts").textContent = items.filter(
@@ -118,7 +130,17 @@ async function refresh() {
               ["void", "Anular"],
             ]
           : [];
-    for (const [command, label] of [...commands, ["audit", "Historial"]]) {
+    const allowed = commands.filter(
+      ([command]) =>
+        role === "admin" ||
+        (role === "issuer" && command !== "pay") ||
+        (role === "collector" && command === "pay"),
+    );
+    for (const [command, label] of [
+      ...allowed,
+      ["audit", "Historial"],
+      ["pdf", "PDF"],
+    ]) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = label;
@@ -131,11 +153,27 @@ async function refresh() {
             byId("events").replaceChildren();
             for (const event of history.items) {
               const item = document.createElement("li");
-              item.textContent = `${events[event.type]} · v${event.version} · ${new Date(event.occurredAt).toLocaleString("es-EC")}`;
+              item.textContent = `${events[event.type]} · ${event.actorRole} · v${event.version} · ${new Date(event.occurredAt).toLocaleString("es-EC")}`;
               byId("events").append(item);
             }
             byId("audit").hidden = false;
             byId("audit").scrollIntoView({ behavior: "smooth" });
+          } else if (command === "pdf") {
+            const response = await fetch(`/api/v1/invoices/${invoice.id}/pdf`, {
+              headers: { Authorization: `Bearer ${token}` },
+              signal: AbortSignal.timeout(15000),
+            });
+            if (!response.ok)
+              throw new Error("No fue posible exportar la factura.");
+            const url = URL.createObjectURL(await response.blob());
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `invoice-${invoice.id}.pdf`;
+            document.body.append(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            notice("Factura exportada en PDF.");
           } else {
             await api(
               `/api/v1/invoices/${invoice.id}/${command}`,
@@ -162,10 +200,18 @@ byId("login").addEventListener("submit", async (event) => {
   event.preventDefault();
   token = byId("token").value;
   try {
+    const session = await api("/api/v1/session");
+    role = session.role;
+    byId("create").hidden = role === "collector";
+    byId("content").classList.toggle("collection-view", role === "collector");
+    pageIndex = 0;
+    cursors.splice(1);
     await refresh();
     byId("token").value = "";
     byId("access").hidden = true;
-    notice("Espacio de trabajo conectado.");
+    notice(
+      `Espacio conectado · Rol: ${{ admin: "Administración", issuer: "Emisión", collector: "Cobro" }[role]}.`,
+    );
   } catch (error) {
     token = "";
     notice(error.message);
@@ -174,6 +220,27 @@ byId("login").addEventListener("submit", async (event) => {
 byId("refresh").addEventListener("click", () =>
   refresh().catch((error) => notice(error.message)),
 );
+byId("next-page").addEventListener("click", async () => {
+  if (!nextCursor) return;
+  cursors[pageIndex + 1] = nextCursor;
+  pageIndex += 1;
+  try {
+    await refresh();
+  } catch (error) {
+    pageIndex -= 1;
+    notice(error.message);
+  }
+});
+byId("previous-page").addEventListener("click", async () => {
+  if (pageIndex === 0) return;
+  pageIndex -= 1;
+  try {
+    await refresh();
+  } catch (error) {
+    pageIndex += 1;
+    notice(error.message);
+  }
+});
 byId("close-audit").addEventListener("click", () => {
   byId("audit").hidden = true;
 });
@@ -208,6 +275,8 @@ byId("invoice-form").addEventListener("submit", async (event) => {
       pendingCreate = { serialized, key: crypto.randomUUID() };
     await api("/api/v1/invoices", body, pendingCreate.key);
     pendingCreate = null;
+    pageIndex = 0;
+    cursors.splice(1);
     byId("invoice-form").reset();
     byId("estimate").textContent = "$0.00";
     notice("Borrador creado. Revisa el importe antes de emitirlo.");

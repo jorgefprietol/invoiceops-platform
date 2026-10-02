@@ -1,12 +1,14 @@
 # Contrato HTTP
 
-Base local: `http://127.0.0.1:18100`. Las rutas `/api/` requieren `Authorization: Bearer <API_TOKEN>`. Cuerpos JSON limitados a 64 KiB y campos desconocidos rechazados.
+Base local: `http://127.0.0.1:18100`. Las rutas `/api/` requieren un token de rol en `Authorization: Bearer <token>`. Cuerpos JSON limitados a 64 KiB y campos desconocidos rechazados. Tokens: administración (`API_TOKEN`), emisión (`API_ISSUER_TOKEN`) y cobro (`API_COLLECTOR_TOKEN`). Emisión permite crear, emitir y anular; cobro permite pagar. Todos permiten leer y exportar. La API comprueba permisos antes de consultar idempotencia.
 
 | Método | Ruta | Resultado |
 | --- | --- | --- |
 | GET | `/health/live` | 200: proceso vivo y revisión |
 | GET | `/health/ready` | 200: PostgreSQL accesible; 503: no disponible |
-| GET | `/api/v1/invoices` | Últimas 100 facturas |
+| GET | `/api/v1/session` | Rol de la credencial actual |
+| GET | `/api/v1/invoices?limit=20&cursor=...` | Página de facturas y `nextCursor` |
+| GET | `/api/v1/invoices/{id}/pdf` | PDF autenticado con nombre de descarga y cache deshabilitada |
 | GET | `/api/v1/invoices/{id}` | Factura por UUID |
 | GET | `/api/v1/invoices/{id}/events` | Eventos ordenados por versión |
 | POST | `/api/v1/invoices` | 201: nuevo borrador |
@@ -15,6 +17,10 @@ Base local: `http://127.0.0.1:18100`. Las rutas `/api/` requieren `Authorization
 | POST | `/api/v1/invoices/{id}/void` | 200: anulación |
 
 `/metrics` está disponible en el puerto interno de la API; Nginx no lo expone.
+
+`limit` admite 1 a 100 (default 20). Pasar `nextCursor` de la respuesta para obtener la siguiente página; `null` indica el final. El cursor conserva la posición por fecha de creación y UUID y evita duplicar filas cuando se insertan nuevas facturas. No es una instantánea transaccional del conjunto completo. El workspace resume la página actual y muestra navegación anterior/siguiente.
+
+Los eventos incluyen `actorRole`; los eventos previos a la migración de roles se identifican como `system`.
 
 ## Crear una factura
 
@@ -43,6 +49,7 @@ Las transiciones requieren `{ "expectedVersion": 1 }`. El contador inicia en 1 y
 | --- | --- |
 | 400 | `invalid_request` |
 | 401 | `unauthorized` |
+| 403 | `forbidden` |
 | 404 | `invoice_not_found` |
 | 409 | `version_conflict`, `invalid_transition`, `idempotency_conflict` |
 | 422 | `invoice_limit_exceeded` |

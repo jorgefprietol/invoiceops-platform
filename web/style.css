@@ -255,6 +255,20 @@ a:focus-visible {
   gap: 22px;
   align-items: start;
 }
+.content.collection-view {
+  grid-template-columns: 1fr;
+}
+.create[hidden] {
+  display: none;
+}
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pagination span {
+  margin-right: auto;
+}
 .panel {
   background: white;
   border: 1px solid #e0e6ef;

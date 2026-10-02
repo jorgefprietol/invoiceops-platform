@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import pg from "pg";
 import {
   type Command,
   DomainError,
+  decodeCursor,
   type Invoice,
   type InvoiceInput,
+  type Role,
   totals,
   transition,
 } from "./domain.js";
@@ -27,11 +29,30 @@ export async function migrate(pool: pg.Pool) {
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(8129100)");
-    const sql = await readFile(
-      new URL("../../db/001-invoices.sql", import.meta.url),
-      "utf8",
+    await client.query(
+      "CREATE TABLE IF NOT EXISTS schema_migrations(version TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
     );
-    await client.query(sql);
+    const directory = new URL("../../db/", import.meta.url);
+    for (const version of (await readdir(directory))
+      .filter((file) => /^\d{3}-.+\.sql$/.test(file))
+      .sort()) {
+      const sql = await readFile(new URL(version, directory), "utf8");
+      const checksum = createHash("sha256").update(sql).digest("hex");
+      const previous = await client.query<{ checksum: string }>(
+        "SELECT checksum FROM schema_migrations WHERE version=$1",
+        [version],
+      );
+      if (previous.rows[0]) {
+        if (previous.rows[0].checksum !== checksum)
+          throw new Error(`Migration checksum mismatch: ${version}`);
+        continue;
+      }
+      await client.query(sql);
+      await client.query(
+        "INSERT INTO schema_migrations(version, checksum) VALUES ($1,$2)",
+        [version, checksum],
+      );
+    }
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -46,11 +67,29 @@ export function repository(pool: pg.Pool) {
     async ready() {
       await pool.query("SELECT 1 FROM invoices LIMIT 1");
     },
-    async list() {
-      const result = await pool.query<{ document: Invoice }>(
-        "SELECT document FROM invoices ORDER BY created_at DESC, id DESC LIMIT 100",
+    async list(limit: number, cursor?: string) {
+      const after = cursor ? decodeCursor(cursor) : undefined;
+      const result = await pool.query<{
+        document: Invoice;
+        cursor_time: string;
+      }>(
+        `SELECT document, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time FROM invoices
+         WHERE ($1::timestamptz IS NULL OR (created_at, id) < ($1::timestamptz, $2::uuid))
+         ORDER BY created_at DESC, id DESC LIMIT $3`,
+        [after?.createdAt ?? null, after?.id ?? null, limit + 1],
       );
-      return result.rows.map((row) => row.document);
+      const rows = result.rows.slice(0, limit);
+      const last = rows.at(-1);
+      const nextCursor =
+        result.rows.length > limit && last
+          ? Buffer.from(
+              JSON.stringify({
+                createdAt: last.cursor_time,
+                id: last.document.id,
+              }),
+            ).toString("base64url")
+          : null;
+      return { items: rows.map((row) => row.document), nextCursor, limit };
     },
     async get(id: string) {
       const result = await pool.query<{ document: Invoice }>(
@@ -63,7 +102,7 @@ export function repository(pool: pg.Pool) {
     },
     async events(id: string) {
       const result = await pool.query(
-        'SELECT event_type AS type, version, occurred_at AS "occurredAt" FROM invoice_events WHERE invoice_id=$1 ORDER BY version',
+        'SELECT event_type AS type, version, actor_role AS "actorRole", occurred_at AS "occurredAt" FROM invoice_events WHERE invoice_id=$1 ORDER BY version',
         [id],
       );
       return result.rows;
@@ -111,7 +150,11 @@ export function repository(pool: pg.Pool) {
         client.release();
       }
     },
-    async create(client: pg.PoolClient, input: InvoiceInput) {
+    async create(
+      client: pg.PoolClient,
+      input: InvoiceInput,
+      role: Role = "admin",
+    ) {
       const invoice: Invoice = {
         ...input,
         ...totals(input),
@@ -125,8 +168,8 @@ export function repository(pool: pg.Pool) {
         invoice,
       ]);
       await client.query(
-        "INSERT INTO invoice_events(invoice_id, version, event_type) VALUES ($1,1,'created')",
-        [invoice.id],
+        "INSERT INTO invoice_events(invoice_id, version, event_type, actor_role) VALUES ($1,1,'created',$2)",
+        [invoice.id, role],
       );
       return invoice;
     },
@@ -135,6 +178,7 @@ export function repository(pool: pg.Pool) {
       id: string,
       command: Command,
       version: number,
+      role: Role = "admin",
     ) {
       const result = await client.query<{ document: Invoice }>(
         "SELECT document FROM invoices WHERE id=$1 FOR UPDATE",
@@ -154,8 +198,8 @@ export function repository(pool: pg.Pool) {
         invoice,
       ]);
       await client.query(
-        "INSERT INTO invoice_events(invoice_id, version, event_type) VALUES ($1,$2,$3)",
-        [id, invoice.version, command],
+        "INSERT INTO invoice_events(invoice_id, version, event_type, actor_role) VALUES ($1,$2,$3,$4)",
+        [id, invoice.version, command, role],
       );
       return invoice;
     },

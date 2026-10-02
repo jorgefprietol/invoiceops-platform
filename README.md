@@ -12,7 +12,7 @@ Proyecto de ingeniería independiente de **Jorge Prieto**. El repositorio contie
 - Cálculo en centavos enteros y redondeo del impuesto sobre el subtotal, con límites explícitos de negocio.
 - Idempotencia persistente: misma clave y solicitud devuelven el mismo resultado, incluso después de recrear la API.
 - Concurrencia con versión esperada, bloqueo de fila y transacción única para factura, evento e idempotencia.
-- Workspace web adaptable a móviles, autenticación por token y consulta del historial.
+- Workspace adaptable a móviles, roles separados de emisión/cobro, paginación por cursor y PDF con tipografía incrustada.
 - Imágenes independientes para API y Nginx, usuario sin privilegios, filesystem de aplicación de solo lectura y bases fijadas por digest.
 - Kubernetes con dos réplicas de API, probes, recursos, volumen persistente, PodDisruptionBudget y políticas de red declarativas.
 - Métricas de errores, latencia, operaciones y reintentos; dashboard de seis paneles y reglas de alerta.
@@ -51,9 +51,9 @@ npm run smoke
 | Grafana | http://127.0.0.1:13100/d/invoiceops-operations |
 | Prometheus | http://127.0.0.1:19100 |
 
-La inicialización genera credenciales aleatorias en `.env`, excluido del repositorio. Introduce `API_TOKEN` en el workspace. La clave se conserva solo en memoria de la página. Grafana usa `admin` y el valor de `GRAFANA_PASSWORD`. Los puertos publicados escuchan en loopback; PostgreSQL y la API no publican puertos del host.
+La inicialización genera credenciales aleatorias en `.env`, excluido del repositorio. Introduce `API_TOKEN` para administrar; `API_ISSUER_TOKEN` para crear/emitir/anular; `API_COLLECTOR_TOKEN` para registrar cobros. Todos los roles pueden consultar facturas y exportar PDF. La clave se conserva solo en memoria de la página. Grafana usa `admin` y `GRAFANA_PASSWORD`. Los puertos publicados escuchan en loopback; PostgreSQL y la API no publican puertos del host.
 
-Para ejecutar solo la aplicación: `docker compose up --build -d --wait`. El perfil `observability` agrega Prometheus y Grafana. Cambia los puertos en `.env` para ejecutar otra instalación.
+Para ejecutar solo la aplicación: `docker compose up --build -d --wait`. El perfil `observability` agrega Prometheus y Grafana. Para otra instalación simultánea cambia los puertos, `COMPOSE_PROJECT_NAME` y los rangos `APPLICATION_SUBNET`, `DATA_SUBNET`, `TELEMETRY_SUBNET`, `MONITORING_SUBNET`; los defaults son `10.250.130.0/24` a `10.250.133.0/24`.
 
 ## Verificación
 
@@ -67,7 +67,7 @@ node scripts/kubernetes.mjs
 
 El último comando requiere `kind` y `kubectl` en PATH; crea únicamente el cluster `invoiceops` y guarda su kubeconfig en `.artifacts`. Prueba reinicio de API, estado persistente, rechazo de una imagen inválida, disponibilidad durante ese fallo y rollback. Cierra el port-forward al terminar y conserva el cluster para inspección. [Operación de Kubernetes](docs/kubernetes.md).
 
-Las pruebas de integración se ejecutan contra una base separada indicada por `DATABASE_URL`; el workflow provisiona su propia instancia PostgreSQL. Incluyen ocho solicitudes concurrentes con una misma clave, conflictos de payload, carreras de actualización y rollback de una transición rechazada.
+`npm run verify` requiere PostgreSQL y ejecuta obligatoriamente dominio, PDF e integración. Indica una base separada con `DATABASE_URL`; el workflow y el Jenkinsfile provisionan sus propias instancias. Las pruebas incluyen ocho solicitudes concurrentes, conflictos de payload, carreras de actualización, rollback de transiciones rechazadas, separación de roles y paginación con inserciones concurrentes. Para revisar solo dominio y PDF usa `npm run test:unit`.
 
 ## Entrega
 
@@ -81,6 +81,8 @@ La aceptación despliega en un cluster efímero del runner de GitHub; no implica
 
 ## Alcance
 
-El token compartido identifica una instalación de confianza. Para uso comercial se requiere identidad individual, roles, TLS, políticas de retención, administración de clientes y cumplimiento fiscal. Registrar un cobro representa una acción operativa; no procesa dinero ni se conecta a un proveedor de pagos. PostgreSQL tiene una sola instancia: las dos réplicas de API no hacen altamente disponible la base de datos. Las reglas de Prometheus se evalúan localmente; no hay un canal de notificación externo configurado.
+Los tokens de rol identifican funciones en una instalación de confianza y no personas individuales. Para uso comercial se requiere identidad individual, TLS, políticas de retención, administración de clientes y cumplimiento fiscal. El PDF es un resumen operativo, no un comprobante fiscal. Registrar un cobro no procesa dinero ni se conecta a un proveedor de pagos. PostgreSQL tiene una sola instancia: las dos réplicas de API no hacen altamente disponible la base. Las reglas de Prometheus se evalúan localmente; no hay notificaciones externas configuradas.
 
 Licencia [MIT](LICENSE).
+
+La fuente Noto Sans se redistribuye bajo [SIL Open Font License](assets/fonts/LICENSE.txt).

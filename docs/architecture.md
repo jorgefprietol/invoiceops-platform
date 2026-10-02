@@ -16,7 +16,7 @@ Cada mutación obtiene un bloqueo transaccional de PostgreSQL derivado de la cla
 
 La solicitud normalizada incluye operación, identificador de factura y payload. Se calcula SHA-256. Si la clave existe con ese hash se devuelve el resultado original; un hash diferente devuelve 409. La fila de factura se bloquea con `FOR UPDATE` y se exige `expectedVersion`. Actualización, evento e idempotencia hacen commit juntos. Una excepción hace rollback de todo, permitiendo reutilizar una clave cuyo intento fue rechazado.
 
-No se eliminan claves automáticamente: hacerlo permitiría volver a aplicar una operación antigua. La retención debe definirse con el cliente antes de crecer el volumen. La lista devuelve solo las 100 facturas más recientes; el resumen de la interfaz corresponde a ese conjunto, no a toda la historia.
+No se eliminan claves automáticamente: hacerlo permitiría volver a aplicar una operación antigua. La retención debe definirse con el cliente antes de crecer el volumen. La paginación usa fecha con microsegundos y UUID; el resumen corresponde a la página actual.
 
 ## ADR-004 · Entrega verificable
 
@@ -33,3 +33,11 @@ La serie de métricas usa plantillas de ruta, método y código HTTP. No incluye
 El usuario de aplicación puede crear sus objetos de esquema para ejecutar migraciones, pero no puede crear roles, bases de datos ni actuar como superusuario. El propietario de las tablas puede modificar la auditoría; la protección aquí es transaccional y de aplicación, no almacenamiento WORM. Una política de auditoría regulada requeriría separación adicional de privilegios.
 
 Compose limita recursos y rota logs. Kubernetes restringe privilegios, no monta credenciales del service account y define políticas de red. La aplicación está dirigida a una instalación local de confianza; un despliegue externo necesita TLS, identidad y permisos por usuario.
+
+## ADR-007 · Roles y documentos
+
+Emisión y cobro usan credenciales distintas, con permisos comprobados en el servidor y `actor_role` dentro del evento transaccional. El administrador combina funciones. La separación limita funciones por token, pero no impone que una persona física no posea ambas credenciales; esa garantía requiere un proveedor de identidad individual.
+
+Los PDF se producen en memoria con PDFKit y Noto Sans incrustada (SIL OFL). El documento paginado conserva importes, estado y versión, y se entrega con `Cache-Control: no-store`. No se almacena una copia adicional de facturas en disco. Los tests ejercitan cien líneas y clientes con acentos; el fixture se renderiza para revisar márgenes, encabezados, totales y última página.
+
+Las migraciones numeradas se registran con SHA-256 en `schema_migrations`, bajo un bloqueo transaccional compartido. Un archivo aplicado no se modifica: un cambio de checksum detiene el arranque. La migración de roles es compatible con la API anterior, que deja `system` como rol para eventos legados.

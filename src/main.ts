@@ -16,7 +16,10 @@ if (process.argv.includes("--migrate")) {
   await pool.end();
   process.exit(0);
 }
-const app = buildApp(pool, process.env.API_TOKEN ?? "");
+const app = buildApp(pool, process.env.API_TOKEN ?? "", true, {
+  issuer: process.env.API_ISSUER_TOKEN,
+  collector: process.env.API_COLLECTOR_TOKEN,
+});
 await app.listen({ host: "0.0.0.0", port: Number(process.env.PORT ?? 8080) });
 let shuttingDown = false;
 for (const signal of ["SIGTERM", "SIGINT"] as const) {

@@ -18,6 +18,7 @@ COPY --from=build --chown=65532:65532 /app/node_modules ./node_modules
 COPY --from=build --chown=65532:65532 /app/dist/src ./dist/src
 COPY --chown=65532:65532 package.json ./
 COPY --chown=65532:65532 db ./db
+COPY --chown=65532:65532 assets ./assets
 USER 65532:65532
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=6 \

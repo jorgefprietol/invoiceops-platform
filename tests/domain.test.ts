@@ -1,11 +1,42 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  authorize,
   DomainError,
+  decodeCursor,
   invoiceInput,
+  pageQuery,
   totals,
   transition,
 } from "../src/domain.js";
+
+test("issuer and collector permissions are independent and admin can operate both", () => {
+  for (const command of ["create", "issue", "void"] as const) {
+    authorize("issuer", command);
+    authorize("admin", command);
+    assert.throws(
+      () => authorize("collector", command),
+      (error: unknown) => error instanceof DomainError && error.status === 403,
+    );
+  }
+  authorize("collector", "pay");
+  authorize("admin", "pay");
+  assert.throws(() => authorize("issuer", "pay"), DomainError);
+});
+
+test("pagination inputs reject malformed cursors and excessive page sizes", () => {
+  assert.equal(pageQuery.parse({}).limit, 20);
+  assert.equal(pageQuery.safeParse({ limit: 101 }).success, false);
+  assert.throws(() => decodeCursor("not-valid-json"), DomainError);
+  const value = {
+    createdAt: "2026-10-02T10:11:12.123456Z",
+    id: "66f1d9b5-c0fa-47d9-a986-32023468ca03",
+  };
+  assert.deepEqual(
+    decodeCursor(Buffer.from(JSON.stringify(value)).toString("base64url")),
+    value,
+  );
+});
 
 test("money uses integer cents and half-up rounding on the invoice subtotal", () => {
   const input = invoiceInput.parse({

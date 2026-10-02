@@ -16,3 +16,10 @@ if (existsSync(".env")) {
 }
 const token = readFileSync(".env", "utf8").match(/^API_TOKEN=(.+)$/m)?.[1];
 if (!token || token.length < 32) throw new Error("Invalid API_TOKEN in .env");
+// Upgrade an existing installation without rotating its database or admin credentials.
+let configuration = readFileSync(".env", "utf8");
+for (const key of ["API_ISSUER_TOKEN", "API_COLLECTOR_TOKEN"]) {
+  if (!new RegExp(`^${key}=.+$`, "m").test(configuration))
+    configuration += `${configuration.endsWith("\n") ? "" : "\n"}${key}=${randomBytes(32).toString("hex")}\n`;
+}
+writeFileSync(".env", configuration, { mode: 0o600 });

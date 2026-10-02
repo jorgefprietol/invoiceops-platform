@@ -9,7 +9,11 @@ const pool = createPool(
     "postgres://invoiceops:invoiceops@localhost:15434/invoiceops",
 );
 const token = "integration-test-token-with-32-characters";
-const app = buildApp(pool, token, false);
+const roleTokens = {
+  issuer: "issuer-integration-token-at-least-32-chars",
+  collector: "collector-integration-token-at-least-32-chars",
+};
+const app = buildApp(pool, token, false, roleTokens);
 const auth = { authorization: `Bearer ${token}` };
 const input = {
   customer: "Integration Client",
@@ -17,6 +21,134 @@ const input = {
   lines: [{ description: "Service", quantity: 2, unitPriceCents: 12000 }],
   taxBasisPoints: 1500,
 };
+
+test("role permissions protect issuance and collection and audit the acting role", async () => {
+  const issuer = { authorization: `Bearer ${roleTokens.issuer}` };
+  const collector = { authorization: `Bearer ${roleTokens.collector}` };
+  assert.equal(
+    (await app.inject({ url: "/api/v1/session", headers: issuer })).json().role,
+    "issuer",
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/invoices",
+        headers: { ...collector, "idempotency-key": randomUUID() },
+        payload: input,
+      })
+    ).statusCode,
+    403,
+  );
+  const created = await app.inject({
+    method: "POST",
+    url: "/api/v1/invoices",
+    headers: { ...issuer, "idempotency-key": randomUUID() },
+    payload: input,
+  });
+  assert.equal(created.statusCode, 201);
+  const id = created.json().id;
+  const command = (
+    operation: string,
+    expectedVersion: number,
+    principal: typeof issuer,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/invoices/${id}/${operation}`,
+      headers: { ...principal, "idempotency-key": randomUUID() },
+      payload: { expectedVersion },
+    });
+  assert.equal((await command("issue", 1, collector)).statusCode, 403);
+  assert.equal((await command("issue", 1, issuer)).statusCode, 200);
+  assert.equal((await command("pay", 2, issuer)).statusCode, 403);
+  assert.equal((await command("pay", 2, collector)).json().status, "paid");
+  const events = await app.inject({
+    url: `/api/v1/invoices/${id}/events`,
+    headers: collector,
+  });
+  assert.deepEqual(
+    events.json().items.map((event: { actorRole: string }) => event.actorRole),
+    ["issuer", "issuer", "collector"],
+  );
+  assert.equal(
+    (await app.inject({ url: `/api/v1/invoices/${id}/pdf` })).statusCode,
+    401,
+  );
+  const pdf = await app.inject({
+    url: `/api/v1/invoices/${id}/pdf`,
+    headers: collector,
+  });
+  assert.equal(pdf.statusCode, 200);
+  assert.equal(pdf.headers["content-type"], "application/pdf");
+  assert.equal(pdf.headers["cache-control"], "no-store");
+  assert.match(
+    String(pdf.headers["content-disposition"]),
+    /attachment; filename="invoice-/,
+  );
+  assert.equal(pdf.rawPayload.subarray(0, 5).toString("ascii"), "%PDF-");
+});
+
+test("keyset pagination traverses existing invoices once despite an intervening insertion", async () => {
+  for (let index = 0; index < 6; index++)
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/invoices",
+      headers: { ...auth, "idempotency-key": randomUUID() },
+      payload: { ...input, reference: `PAGE-${index}` },
+    });
+  const expected = (
+    await pool.query<{ id: string }>(
+      "SELECT id FROM invoices ORDER BY created_at DESC, id DESC",
+    )
+  ).rows.map((row) => row.id);
+  let page = (
+    await app.inject({ url: "/api/v1/invoices?limit=3", headers: auth })
+  ).json();
+  const ids: string[] = page.items.map((item: { id: string }) => item.id);
+  await app.inject({
+    method: "POST",
+    url: "/api/v1/invoices",
+    headers: { ...auth, "idempotency-key": randomUUID() },
+    payload: { ...input, reference: "INSERTED-AFTER-FIRST-PAGE" },
+  });
+  for (let index = 0; page.nextCursor && index < 100; index++) {
+    page = (
+      await app.inject({
+        url: `/api/v1/invoices?limit=3&cursor=${page.nextCursor}`,
+        headers: auth,
+      })
+    ).json();
+    ids.push(...page.items.map((item: { id: string }) => item.id));
+  }
+  assert.deepEqual(ids, expected);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(
+    (
+      await app.inject({
+        url: "/api/v1/invoices?cursor=not-valid-json",
+        headers: auth,
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (await app.inject({ url: "/api/v1/invoices?limit=101", headers: auth }))
+      .statusCode,
+    400,
+  );
+});
+
+test("versioned migrations are safely repeatable", async () => {
+  await migrate(pool);
+  const applied = await pool.query(
+    "SELECT version FROM schema_migrations ORDER BY version",
+  );
+  assert.deepEqual(
+    applied.rows.map((row) => row.version),
+    ["001-invoices.sql", "002-actor-role.sql"],
+  );
+});
 before(async () => {
   await migrate(pool);
   await app.ready();

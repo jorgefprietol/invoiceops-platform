@@ -32,8 +32,10 @@ El formato binario se copia desde el contenedor para evitar redirección de bina
 
 Guardar los digests actuales de API y web. Verificar la procedencia de los nuevos digests, definir `API_IMAGE` y `WEB_IMAGE` en `.env` y ejecutar `docker compose --profile observability up -d --no-build --wait`. Ejecutar smoke. Si falla una verificación y el esquema sigue siendo compatible, restablecer los digests previos y repetir `up` y readiness.
 
-La migración inicial crea tablas de forma idempotente. Una evolución futura necesita nuevas migraciones versionadas, cambios compatibles con versiones consecutivas y validación de backup. `docker compose down` conserva volúmenes; `down --volumes` elimina datos y se reserva para instancias desechables. No eliminar volúmenes para resolver un problema de arranque.
+Las migraciones numeradas y sus checksums se guardan en `schema_migrations`; un archivo aplicado debe permanecer inmutable. Cada cambio de esquema requiere una nueva migración compatible con versiones consecutivas y validación de backup. `docker compose down` conserva volúmenes; `down --volumes` elimina datos y se reserva para instancias desechables. No eliminar volúmenes para resolver un problema de arranque.
 
 ## Credenciales
 
 `npm run init` preserva `.env` existente. Los secretos de PostgreSQL se aplican en su primer arranque: cambiar únicamente el archivo no modifica contraseñas de una base ya inicializada. Una rotación requiere cambiar el rol dentro de PostgreSQL y actualizar las conexiones de forma coordinada. Grafana también conserva estado de usuario en su volumen.
+
+La inicialización agrega tokens de emisión y cobro si faltan, sin rotar los secretos existentes. Para cambiar un token de API, actualizar `.env` y recrear la API; la credencial anterior deja de ser válida. Entregar a cada función solo su token correspondiente. La auditoría muestra la función que confirmó el cambio; no identifica una persona.
