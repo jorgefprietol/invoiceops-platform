@@ -79,6 +79,11 @@ jobs:
           build-args: REVISION=${{ github.sha }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
+      - name: HTTP probe rejects an unavailable endpoint
+        run: |
+          status=0
+          docker run --rm --network none --entrypoint /usr/local/bin/http-healthcheck invoiceops-web:ci || status=$?
+          test "$status" -eq 1
       - name: Start the exact images and verify invoice operations
         run: |
           npm run init

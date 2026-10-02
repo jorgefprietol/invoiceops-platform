@@ -203,6 +203,7 @@ byId("login").addEventListener("submit", async (event) => {
     const session = await api("/api/v1/session");
     role = session.role;
     byId("create").hidden = role === "collector";
+    byId("create-link").hidden = role === "collector";
     byId("content").classList.toggle("collection-view", role === "collector");
     pageIndex = 0;
     cursors.splice(1);

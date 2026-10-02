@@ -6,6 +6,10 @@ Plataforma de facturación con un ciclo de entrega automatizado y operación obs
 
 Proyecto de ingeniería independiente de **Jorge Prieto**. El repositorio contiene la implementación, las decisiones de arquitectura, pruebas reproducibles y procedimientos operativos. Las capacidades se presentan a partir de evidencia técnica; no se atribuyen despliegues comerciales ni resultados de clientes.
 
+![Workspace de InvoiceOps con datos sintéticos de demostración](docs/images/workspace.png)
+
+[Vista móvil](docs/images/mobile.png) · [Factura PDF de ejemplo](output/pdf/invoiceops-sample.pdf) · [Ejecución completa verificada](https://github.com/jorgefprietol/invoiceops-platform/actions/runs/37056053522).
+
 ## Capacidades
 
 - Facturas en USD: borrador → emitida → pagada, con anulación de borradores y facturas emitidas.

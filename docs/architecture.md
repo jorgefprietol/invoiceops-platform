@@ -41,3 +41,9 @@ Emisión y cobro usan credenciales distintas, con permisos comprobados en el ser
 Los PDF se producen en memoria con PDFKit y Noto Sans incrustada (SIL OFL). El documento paginado conserva importes, estado y versión, y se entrega con `Cache-Control: no-store`. No se almacena una copia adicional de facturas en disco. Los tests ejercitan cien líneas y clientes con acentos; el fixture se renderiza para revisar márgenes, encabezados, totales y última página.
 
 Las migraciones numeradas se registran con SHA-256 en `schema_migrations`, bajo un bloqueo transaccional compartido. Un archivo aplicado no se modifica: un cambio de checksum detiene el arranque. La migración de roles es compatible con la API anterior, que deja `system` como rol para eventos legados.
+
+## ADR-008 · Runtime web mínimo
+
+El análisis de imágenes bloqueó una base Alpine con dependencias vulnerables de procesamiento de imágenes y expresiones regulares. Se sustituyó por [Nginx de Chainguard](https://images.chainguard.dev/directory/image/nginx/overview), fijado por digest y ejecutado como UID 65532. La configuración limita un worker y concentra archivos temporales en `/tmp` para funcionar con el filesystem de solo lectura.
+
+El runtime no incluye shell ni gestor de paquetes. Un probe HTTP pequeño, compilado estáticamente con Go y sin dependencias externas, consulta la ruta de liveness a través de Nginx con timeout de dos segundos y exige HTTP 200 sin seguir redirecciones. Permite comprobar el proxy real sin incorporar herramientas de depuración al contenedor. Kubernetes mantiene sus probes HTTP nativos. El pipeline prueba el probe con un endpoint ausente y con la aplicación operativa.

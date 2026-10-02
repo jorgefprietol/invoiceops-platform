@@ -258,7 +258,8 @@ a:focus-visible {
 .content.collection-view {
   grid-template-columns: 1fr;
 }
-.create[hidden] {
+.create[hidden],
+.sidebar a[hidden] {
   display: none;
 }
 .pagination {
