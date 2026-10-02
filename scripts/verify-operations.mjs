@@ -40,13 +40,18 @@ const compose = (args) =>
 compose(["stop", "postgres"]);
 try {
   assert.equal(
-    (await fetch(`${base}/health/live`, { signal: AbortSignal.timeout(10000) }))
-      .status,
+    (
+      await fetch(`${base}/health/live`, {
+        headers: { connection: "close" },
+        signal: AbortSignal.timeout(10000),
+      })
+    ).status,
     200,
   );
   assert.equal(
     (
       await fetch(`${base}/health/ready`, {
+        headers: { connection: "close" },
         signal: AbortSignal.timeout(10000),
       })
     ).status,
@@ -57,6 +62,7 @@ try {
 }
 for (let attempt = 0; attempt < 60; attempt++) {
   const ready = await fetch(`${base}/health/ready`, {
+    headers: { connection: "close" },
     signal: AbortSignal.timeout(10000),
   });
   if (ready.ok) break;
