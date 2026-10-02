@@ -14,6 +14,7 @@ const values = Object.fromEntries(
 );
 const base = process.env.BASE_URL ?? `http://127.0.0.1:${values.WEB_PORT}`;
 const headers = {
+  connection: "close",
   authorization: `Bearer ${values.API_TOKEN}`,
   "content-type": "application/json",
   "idempotency-key": randomUUID(),
