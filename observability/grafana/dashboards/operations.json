@@ -1,0 +1,18 @@
+{
+  "uid": "invoiceops-operations",
+  "title": "InvoiceOps | Operational Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": ["invoiceops", "sre"],
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    { "id": 1, "title": "API available", "type": "stat", "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 }, "datasource": { "type": "prometheus", "uid": "invoiceops-prometheus" }, "targets": [{ "expr": "up{job=\"invoiceops-api\"}", "refId": "A" }], "fieldConfig": { "defaults": { "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] }, "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } } },
+    { "id": 2, "title": "Committed operations", "type": "stat", "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 }, "datasource": { "type": "prometheus", "uid": "invoiceops-prometheus" }, "targets": [{ "expr": "sum(invoiceops_mutations_total)", "refId": "A" }], "options": { "reduceOptions": { "calcs": ["lastNotNull"] } } },
+    { "id": 3, "title": "Retries deduplicated", "type": "stat", "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 }, "datasource": { "type": "prometheus", "uid": "invoiceops-prometheus" }, "targets": [{ "expr": "sum(invoiceops_idempotency_replays_total)", "refId": "A" }], "options": { "reduceOptions": { "calcs": ["lastNotNull"] } } },
+    { "id": 4, "title": "Process memory", "type": "stat", "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 }, "datasource": { "type": "prometheus", "uid": "invoiceops-prometheus" }, "targets": [{ "expr": "process_resident_memory_bytes", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }, "options": { "reduceOptions": { "calcs": ["lastNotNull"] } } },
+    { "id": 5, "title": "Requests by response status", "type": "timeseries", "gridPos": { "x": 0, "y": 5, "w": 12, "h": 9 }, "datasource": { "type": "prometheus", "uid": "invoiceops-prometheus" }, "targets": [{ "expr": "sum by (status) (rate(invoiceops_http_requests_total[2m]))", "legendFormat": "{{status}}", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] } },
+    { "id": 6, "title": "Latency p50 / p95", "type": "timeseries", "gridPos": { "x": 12, "y": 5, "w": 12, "h": 9 }, "datasource": { "type": "prometheus", "uid": "invoiceops-prometheus" }, "targets": [{ "expr": "histogram_quantile(0.5, sum by (le) (rate(invoiceops_http_duration_seconds_bucket[2m])))", "legendFormat": "p50", "refId": "A" }, { "expr": "histogram_quantile(0.95, sum by (le) (rate(invoiceops_http_duration_seconds_bucket[2m])))", "legendFormat": "p95", "refId": "B" }], "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] } }
+  ]
+}

@@ -1,0 +1,103 @@
+name: invoiceops
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+x-hardened: &hardened
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging: *logging
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_DB: invoiceops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run npm run init}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Run npm run init}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init-role.sh:/docker-entrypoint-initdb.d/010-role.sh:ro
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d invoiceops"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    cpus: 0.5
+  api:
+    <<: *hardened
+    image: ${API_IMAGE:-invoiceops-api:local}
+    build: { context: ., args: { REVISION: "${APP_REVISION:-development}" } }
+    environment:
+      DATABASE_URL: postgres://invoiceops:${POSTGRES_APP_PASSWORD:?Run npm run init}@postgres:5432/invoiceops
+      API_TOKEN: ${API_TOKEN:?Run npm run init}
+    depends_on: { postgres: { condition: service_healthy } }
+    read_only: true
+    tmpfs: [/tmp:size=16m,mode=1777]
+    networks: [data, application, telemetry]
+    mem_limit: 192m
+    cpus: 0.5
+  web:
+    <<: *hardened
+    image: ${WEB_IMAGE:-invoiceops-web:local}
+    build: { context: ., dockerfile: web/Dockerfile, args: { REVISION: "${APP_REVISION:-development}" } }
+    ports: ["127.0.0.1:${WEB_PORT:-18100}:8080"]
+    depends_on: { api: { condition: service_healthy } }
+    read_only: true
+    tmpfs: [/tmp:size=16m,mode=1777]
+    networks: [application]
+    mem_limit: 64m
+    cpus: 0.25
+  prometheus:
+    <<: *hardened
+    profiles: [observability]
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d", "--storage.tsdb.retention.size=512MB"]
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-19100}:9090"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks: [telemetry]
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+  grafana:
+    <<: *hardened
+    profiles: [observability]
+    image: grafana/grafana:13.2.1@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283
+    ports: ["127.0.0.1:${GRAFANA_PORT:-13100}:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Run npm run init}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks: [telemetry]
+    depends_on: { prometheus: { condition: service_healthy } }
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+networks:
+  application: {}
+  data: { internal: true }
+  telemetry: { internal: true }
+volumes:
+  pgdata: {}
+  prometheus-data: {}
+  grafana-data: {}

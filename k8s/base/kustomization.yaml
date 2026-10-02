@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: invoiceops
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - application.yaml
+  - policy.yaml
+configMapGenerator:
+  - name: postgres-init
+    files: [init-role.sh]
+generatorOptions:
+  disableNameSuffixHash: true

@@ -1,0 +1,233 @@
+name: CI and container delivery
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: invoiceops-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  quality:
+    name: Quality and PostgreSQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_USER: invoiceops
+          POSTGRES_PASSWORD: integration-only-password
+          POSTGRES_DB: invoiceops
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U invoiceops -d invoiceops"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://invoiceops:integration-only-password@localhost:5432/invoiceops
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .node-version, cache: npm }
+      - run: npm ci --ignore-scripts
+      - run: npm run verify
+      - run: npm run test:integration
+      - run: npm audit --audit-level=high
+      - name: Validate orchestration and monitoring rules
+        run: |
+          npm run init
+          docker compose --profile observability config --quiet
+          cmp db/init-role.sh k8s/base/init-role.sh
+          docker run --rm -v "$PWD/observability:/etc/prometheus:ro" --entrypoint promtool prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e check config /etc/prometheus/prometheus.yml
+      - name: Validate workflows
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+
+  delivery:
+    name: Containers and Kubernetes acceptance
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      API_IMAGE: invoiceops-api:ci
+      WEB_IMAGE: invoiceops-web:ci
+      APP_REVISION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .node-version }
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: invoiceops-api:ci
+          provenance: false
+          build-args: REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: web/Dockerfile
+          load: true
+          tags: invoiceops-web:ci
+          provenance: false
+          build-args: REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - name: Start the exact images and verify invoice operations
+        run: |
+          npm run init
+          docker compose --profile observability up --no-build -d --wait --wait-timeout 300
+          npm run smoke
+          node scripts/verify-operations.mjs
+          docker compose --profile observability down --volumes
+      - name: Install kind with checksum verification
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release download v0.33.0 --repo kubernetes-sigs/kind --pattern kind-linux-amd64 --pattern kind-linux-amd64.sha256sum --dir .artifacts
+          (cd .artifacts && sha256sum --check kind-linux-amd64.sha256sum)
+          chmod +x .artifacts/kind-linux-amd64
+          sudo mv .artifacts/kind-linux-amd64 /usr/local/bin/kind
+      - name: Kubernetes rollout, persistence and rollback
+        run: node scripts/kubernetes.mjs
+      - run: mkdir -p reports
+      - name: API vulnerability gate
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: invoiceops-api:ci
+          grype-version: v0.120.0
+          severity-cutoff: high
+          fail-build: true
+          only-fixed: false
+          output-format: sarif
+          output-file: reports/api-vulnerabilities.sarif
+      - name: Web vulnerability gate
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: invoiceops-web:ci
+          grype-version: v0.120.0
+          severity-cutoff: high
+          fail-build: true
+          only-fixed: false
+          output-format: sarif
+          output-file: reports/web-vulnerabilities.sarif
+      - name: API SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: invoiceops-api:ci
+          format: spdx-json
+          output-file: reports/api.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Web SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: invoiceops-web:ci
+          format: spdx-json
+          output-file: reports/web.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Export the tested release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          for component in api web; do
+            docker save "invoiceops-$component:ci" -o "$component.tar"
+            sha256sum "$component.tar" > "$component.tar.sha256"
+            docker image inspect "invoiceops-$component:ci" --format '{{.Id}}' > "$component.id"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          name: tested-release
+          path: |
+            *.tar
+            *.tar.sha256
+            *.id
+          compression-level: 0
+          retention-days: 2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: verification-reports
+          include-hidden-files: true
+          path: |
+            reports/
+            .artifacts/kubernetes-verification.json
+            .artifacts/operations-verification.json
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Diagnostics and cleanup
+        if: always()
+        run: |
+          docker compose --profile observability logs --tail 30 api web
+          docker compose --profile observability down --volumes --remove-orphans
+          kind delete cluster --name invoiceops
+
+  publish:
+    name: Publish tested ${{ matrix.component }} image
+    needs: delivery
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      matrix: { component: [api, web] }
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: tested-release }
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: verification-reports, path: reports }
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify and publish without rebuilding
+        id: image
+        env:
+          COMPONENT: ${{ matrix.component }}
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: |
+          sha256sum --check "$COMPONENT.tar.sha256"
+          docker load -i "$COMPONENT.tar"
+          test "$(docker image inspect "invoiceops-$COMPONENT:ci" --format '{{.Id}}')" = "$(cat "$COMPONENT.id")"
+          image="ghcr.io/${REPOSITORY,,}-$COMPONENT"
+          docker tag "invoiceops-$COMPONENT:ci" "$image:sha-$REVISION"
+          docker push "$image:sha-$REVISION"
+          digest=$(docker image inspect "$image:sha-$REVISION" --format '{{index .RepoDigests 0}}' | cut -d@ -f2)
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "name=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          jq -n --arg image "$image" --arg digest "$digest" --arg revision "$REVISION" '{image:$image,digest:$digest,revision:$revision}' > "$COMPONENT-release.json"
+          echo "Published: $image@$digest" >> "$GITHUB_STEP_SUMMARY"
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+      - name: Attest SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          sbom-path: reports/reports/${{ matrix.component }}.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.component }}
+          path: ${{ matrix.component }}-release.json
+          retention-days: 90

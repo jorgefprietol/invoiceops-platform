@@ -1,0 +1,24 @@
+groups:
+  - name: invoiceops
+    rules:
+      - alert: InvoiceOpsUnavailable
+        expr: up{job="invoiceops-api"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: API unavailable to Prometheus
+          description: Inspect API readiness, logs and PostgreSQL connectivity.
+      - alert: InvoiceOpsErrorBudget
+        expr: sum(rate(invoiceops_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(invoiceops_http_requests_total[5m])), 0.001) > 0.01 and sum(increase(invoiceops_http_requests_total[5m])) > 20
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: More than 1 percent of requests fail with server errors
+          description: Inspect request IDs and recent releases before considering a rollback.
+      - alert: InvoiceOpsLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(invoiceops_http_duration_seconds_bucket[5m]))) > 0.5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: Request p95 exceeds 500 milliseconds
+          description: Inspect database contention, pool saturation and CPU utilization.
