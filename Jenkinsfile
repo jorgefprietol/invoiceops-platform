@@ -20,5 +20,5 @@ pipeline {
       }
     }
   }
-  post { always { sh 'docker compose down --volumes --remove-orphans' } }
+  post { always { sh 'if test -f .env; then docker compose down --volumes --remove-orphans; fi' } }
 }
