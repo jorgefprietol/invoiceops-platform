@@ -47,7 +47,7 @@ Las transiciones requieren `{ "expectedVersion": 1 }`. El contador inicia en 1 y
 
 | HTTP | Códigos |
 | --- | --- |
-| 400 | `invalid_request` |
+| 400 | `invalid_request`, `invalid_cursor` |
 | 401 | `unauthorized` |
 | 403 | `forbidden` |
 | 404 | `invoice_not_found` |

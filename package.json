@@ -15,7 +15,7 @@
     "test": "npm run build && node --test dist/tests/*.test.js dist/tests/integration/*.test.js",
     "test:unit": "npm run build && node --test dist/tests/*.test.js",
     "test:integration": "npm run build && node --test dist/tests/integration/*.test.js",
-    "verify": "npm run lint && npm run test",
+    "verify": "npm run lint && node scripts/verify.mjs",
     "start": "node dist/src/main.js",
     "init": "node scripts/init-env.mjs",
     "smoke": "node scripts/smoke.mjs"

@@ -67,7 +67,7 @@ node scripts/kubernetes.mjs
 
 El último comando requiere `kind` y `kubectl` en PATH; crea únicamente el cluster `invoiceops` y guarda su kubeconfig en `.artifacts`. Prueba reinicio de API, estado persistente, rechazo de una imagen inválida, disponibilidad durante ese fallo y rollback. Cierra el port-forward al terminar y conserva el cluster para inspección. [Operación de Kubernetes](docs/kubernetes.md).
 
-`npm run verify` requiere PostgreSQL y ejecuta obligatoriamente dominio, PDF e integración. Indica una base separada con `DATABASE_URL`; el workflow y el Jenkinsfile provisionan sus propias instancias. Las pruebas incluyen ocho solicitudes concurrentes, conflictos de payload, carreras de actualización, rollback de transiciones rechazadas, separación de roles y paginación con inserciones concurrentes. Para revisar solo dominio y PDF usa `npm run test:unit`.
+`npm run verify` ejecuta obligatoriamente dominio, PDF e integración y crea una instancia PostgreSQL temporal con Docker cuando no existe `DATABASE_URL`. La elimina al terminar. Para utilizar una base de pruebas existente, indica `DATABASE_URL`; el workflow y el Jenkinsfile provisionan sus propias instancias. Las pruebas incluyen ocho solicitudes concurrentes, conflictos de payload, carreras de actualización, rollback de transiciones rechazadas, separación de roles y paginación con inserciones concurrentes. Para revisar solo dominio y PDF usa `npm run test:unit`.
 
 ## Entrega
 
