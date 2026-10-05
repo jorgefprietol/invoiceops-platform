@@ -7,13 +7,16 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev --ignore-scripts --no-audit --no-fund
 
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e
+FROM cgr.dev/chainguard/glibc-dynamic:latest@sha256:82edc253a57efee78d0fb504e11a93b7c74687b1b736110ad3a2a4f3edf632ab
 ARG REVISION=development
 LABEL org.opencontainers.image.title="InvoiceOps API" \
       org.opencontainers.image.source="https://github.com/jorgefprietol/invoiceops-platform" \
       org.opencontainers.image.revision=$REVISION
 ENV NODE_ENV=production PORT=8080 APP_REVISION=$REVISION
 WORKDIR /app
+# Keep the official Node 24 LTS binary on a patched, shell-free glibc base.
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
+COPY --from=build /usr/local/LICENSE /usr/local/share/licenses/node/LICENSE
 COPY --from=build --chown=65532:65532 /app/node_modules ./node_modules
 COPY --from=build --chown=65532:65532 /app/dist/src ./dist/src
 COPY --chown=65532:65532 package.json ./
@@ -22,7 +25,7 @@ COPY --chown=65532:65532 assets ./assets
 USER 65532:65532
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=6 \
-  CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:8080/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+  CMD ["/usr/local/bin/node", "-e", "fetch('http://127.0.0.1:8080/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/nodejs/bin/node"]
+ENTRYPOINT ["/usr/local/bin/node"]
 CMD ["dist/src/main.js"]
