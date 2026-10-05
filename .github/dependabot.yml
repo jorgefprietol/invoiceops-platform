@@ -3,6 +3,10 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
+    # Types must describe the supported Node 24 production runtime.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
     groups: { dependencies: { patterns: ["*"] } }
   - package-ecosystem: docker
     directory: /
