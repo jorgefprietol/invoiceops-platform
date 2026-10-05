@@ -7,7 +7,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev --ignore-scripts --no-audit --no-fund
 
-FROM cgr.dev/chainguard/node:latest@sha256:10be2e69be84a55739a6f4e0ab47703746e546006dad2c80494fafc7f5f6c5fd
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e
 ARG REVISION=development
 LABEL org.opencontainers.image.title="InvoiceOps API" \
       org.opencontainers.image.source="https://github.com/jorgefprietol/invoiceops-platform" \
@@ -22,7 +22,7 @@ COPY --chown=65532:65532 assets ./assets
 USER 65532:65532
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=6 \
-  CMD ["/usr/bin/node", "-e", "fetch('http://127.0.0.1:8080/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+  CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:8080/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/bin/node"]
+ENTRYPOINT ["/nodejs/bin/node"]
 CMD ["dist/src/main.js"]

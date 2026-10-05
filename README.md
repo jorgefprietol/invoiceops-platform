@@ -90,3 +90,7 @@ Los tokens de rol identifican funciones en una instalaciÃ³n de confianza y no pe
 Licencia [MIT](LICENSE).
 
 La fuente Noto Sans se redistribuye bajo [SIL Open Font License](assets/fonts/LICENSE.txt).
+
+### Política de actualización
+
+El builder, el runtime de producción y los tipos de Node permanecen en la línea 24 LTS. TypeScript 7 declara explícitamente los tipos de Node; los cambios se validan con PostgreSQL real, pruebas de contenedores, aceptación Kubernetes y el análisis de vulnerabilidades de ambas imágenes. Dependabot conserva las actualizaciones de parche y digest del builder, y las migraciones de versión mayor requieren una revisión deliberada.

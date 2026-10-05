@@ -7,6 +7,10 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    # Keep the Node 24 LTS builder; runtime migrations require deliberate review.
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
   - package-ecosystem: docker
     directory: /web
     schedule: { interval: weekly }
