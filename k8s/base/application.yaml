@@ -18,7 +18,7 @@ spec:
     metadata: { labels: { app: api } }
     spec:
       automountServiceAccountToken: false
-      terminationGracePeriodSeconds: 20
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -33,6 +33,12 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
+          # Keep serving while endpoint removal propagates, then allow SIGTERM drain.
+          # Use the existing Node binary because the production image has no shell.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/usr/local/bin/node", "-e", "setTimeout(() => {}, 10000)"]
           envFrom: [{ secretRef: { name: invoiceops-api-secrets } }]
           resources:
             requests: { cpu: 100m, memory: 96Mi }

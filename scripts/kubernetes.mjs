@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { promisify } from "node:util";
+
+const execAsync = promisify(execFile);
 const kubectl = process.env.KUBECTL ?? "kubectl";
 const kind = process.env.KIND ?? "kind";
 const cluster = "invoiceops";
@@ -138,6 +141,46 @@ async function request(path, body) {
   assert.ok(response.ok, `${path}: ${response.status}`);
   return response.json();
 }
+async function verifyRolloutAvailability(invoiceId) {
+  let finished = false;
+  let rolloutError;
+  const rollout = execAsync(kubectl, [
+    "--kubeconfig",
+    kubeconfig,
+    "-n",
+    cluster,
+    "rollout",
+    "status",
+    "deployment/api",
+    "--timeout=120s",
+  ]).then(
+    ({ stdout }) => {
+      console.log(stdout);
+      finished = true;
+    },
+    (error) => {
+      rolloutError = error;
+      finished = true;
+    },
+  );
+  let successfulRequests = 0;
+  try {
+    do {
+      // Every request must succeed; do not retry or hide transient proxy errors.
+      assert.equal(
+        (await request(`/api/v1/invoices/${invoiceId}`)).id,
+        invoiceId,
+      );
+      successfulRequests++;
+      await new Promise((done) => setTimeout(done, 250));
+    } while (!finished);
+  } finally {
+    await rollout;
+  }
+  if (rolloutError) throw rolloutError;
+  return successfulRequests;
+}
+
 try {
   for (let attempt = 0; attempt < 60; attempt++) {
     if (forwarding.exitCode !== null)
@@ -156,7 +199,7 @@ try {
   });
   assert.equal(created.totalCents, 28750);
   console.log(k(["-n", cluster, "rollout", "restart", "deployment/api"]));
-  k(["-n", cluster, "rollout", "status", "deployment/api", "--timeout=120s"]);
+  const rolloutSuccessfulRequests = await verifyRolloutAvailability(created.id);
   assert.equal(
     (await request(`/api/v1/invoices/${created.id}`)).id,
     created.id,
@@ -192,10 +235,12 @@ try {
       {
         date: new Date().toISOString(),
         invoice: created.id,
+        rolloutSuccessfulRequests,
         tests: [
           "two-api-replicas",
           "readiness",
           "persistence-across-rollout",
+          "availability-during-rollout",
           "rejected-release",
           "availability-during-failure",
           "rollback",

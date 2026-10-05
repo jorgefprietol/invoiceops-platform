@@ -175,6 +175,12 @@ jobs:
         run: |
           docker compose --profile observability logs --tail 30 api web
           docker compose --profile observability down --volumes --remove-orphans
+          if [ -f .artifacts/kubeconfig ]; then
+            kubectl --kubeconfig .artifacts/kubeconfig -n invoiceops get pods -o wide || true
+            kubectl --kubeconfig .artifacts/kubeconfig -n invoiceops get events --sort-by=.metadata.creationTimestamp || true
+            kubectl --kubeconfig .artifacts/kubeconfig -n invoiceops logs deployment/api --all-pods=true --tail=40 || true
+            kubectl --kubeconfig .artifacts/kubeconfig -n invoiceops logs deployment/web --tail=40 || true
+          fi
           kind delete cluster --name invoiceops
 
   publish:
