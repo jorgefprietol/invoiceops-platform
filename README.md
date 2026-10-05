@@ -94,3 +94,5 @@ La fuente Noto Sans se redistribuye bajo [SIL Open Font License](assets/fonts/LI
 ### Política de actualización
 
 El builder, el runtime de producción y los tipos de Node permanecen en la línea 24 LTS. TypeScript 7 declara explícitamente los tipos de Node; los cambios se validan con PostgreSQL real, pruebas de contenedores, aceptación Kubernetes y el análisis de vulnerabilidades de ambas imágenes. Dependabot conserva las actualizaciones de parche y digest del builder, y las migraciones de versión mayor requieren una revisión deliberada.
+
+Los tipos `@types/node` también conservan la serie 24 para reflejar las APIs realmente disponibles en producción; sus parches y revisiones dentro de esa serie siguen habilitados. El probe HTTP independiente se compila con Go 1.27, sin CGO y con una imagen fijada por digest.
