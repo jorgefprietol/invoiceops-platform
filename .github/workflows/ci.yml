@@ -79,6 +79,10 @@ jobs:
           build-args: REVISION=${{ github.sha }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
+      - name: Verify the production Node LTS runtime
+        run: |
+          mkdir -p reports
+          docker run --rm --entrypoint /usr/local/bin/node invoiceops-api:ci -e "if (process.versions.node.split('.')[0] !== '24') process.exit(1); console.log(JSON.stringify({node: process.versions.node, uid: process.getuid()}))" | tee reports/node-runtime.txt
       - name: HTTP probe rejects an unavailable endpoint
         run: |
           status=0

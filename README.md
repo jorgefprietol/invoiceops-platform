@@ -39,7 +39,7 @@ flowchart LR
 
 ## Ejecución local
 
-Requisitos: Docker con contenedores Linux, Docker Compose y Node.js 24 para los comandos de inicialización y verificación. El servicio de aplicación usa el runtime fijado en el Dockerfile. El stack completo tiene un presupuesto aproximado de 1 GB de RAM para sus límites de contenedor; Kubernetes necesita memoria adicional.
+Requisitos: Docker con contenedores Linux, Docker Compose y Node.js 24 para los comandos de inicialización y verificación. El servicio de aplicación usa el binario oficial Node.js 24 LTS y su licencia, copiados desde el builder fijado por digest a una imagen mínima Chainguard glibc-dynamic también fijada por digest, sin shell y ejecutada como usuario 65532. El stack completo tiene un presupuesto aproximado de 1 GB de RAM para sus límites de contenedor; Kubernetes necesita memoria adicional.
 
 ```powershell
 git clone https://github.com/jorgefprietol/invoiceops-platform.git
@@ -90,3 +90,7 @@ Los tokens de rol identifican funciones en una instalación de confianza y no pe
 Licencia [MIT](LICENSE).
 
 La fuente Noto Sans se redistribuye bajo [SIL Open Font License](assets/fonts/LICENSE.txt).
+
+### Política de actualización
+
+El builder, el runtime de producción y los tipos de Node permanecen en la línea 24 LTS. TypeScript 7 declara explícitamente los tipos de Node; los cambios se validan con PostgreSQL real, pruebas de contenedores, aceptación Kubernetes y el análisis de vulnerabilidades de ambas imágenes. Dependabot conserva las actualizaciones de parche y digest del builder, y las migraciones de versión mayor requieren una revisión deliberada.
