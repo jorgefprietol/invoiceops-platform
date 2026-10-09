@@ -7,7 +7,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev --ignore-scripts --no-audit --no-fund
 
-FROM cgr.dev/chainguard/glibc-dynamic:latest@sha256:82edc253a57efee78d0fb504e11a93b7c74687b1b736110ad3a2a4f3edf632ab
+FROM cgr.dev/chainguard/glibc-dynamic:latest@sha256:2a3f1ec8a825dfbb1211b5835a9b8b3fb8d76c7bd22a189b1f84157ed2028293
 ARG REVISION=development
 LABEL org.opencontainers.image.title="InvoiceOps API" \
       org.opencontainers.image.source="https://github.com/jorgefprietol/invoiceops-platform" \
