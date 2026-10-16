@@ -149,7 +149,7 @@ jobs:
             sha256sum "$component.tar" > "$component.tar.sha256"
             docker image inspect "invoiceops-$component:ci" --format '{{.Id}}' > "$component.id"
           done
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
           name: tested-release
@@ -159,7 +159,7 @@ jobs:
             *.id
           compression-level: 0
           retention-days: 2
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: verification-reports
@@ -240,7 +240,7 @@ jobs:
           sbom-path: reports/reports/${{ matrix.component }}.spdx.json
           push-to-registry: true
           create-storage-record: false
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ matrix.component }}
           path: ${{ matrix.component }}-release.json
